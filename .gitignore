@@ -4,6 +4,8 @@ __pycache__/
 venv/
 .env
 *.env
+!requirements.txt
+.pytest_cache/
 .superpowers/
 ~/.pnl/
 .streamlit/secrets.toml
