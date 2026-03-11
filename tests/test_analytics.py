@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from analytics import compute_metrics, compute_daily_pnl, compute_pnl_by_coin
+from analytics import compute_metrics, compute_daily_pnl, compute_pnl_by_coin, estimate_daily_balance
 
 
 def _make_trades(n_trades=20):
@@ -83,3 +83,23 @@ def test_sharpe_ratio_type():
     df = _make_trades()
     m = compute_metrics(df)
     assert isinstance(m["sharpe_ratio"], float)
+
+
+def test_estimate_daily_balance():
+    df = _make_trades()
+    balance = estimate_daily_balance(df, current_balance=5000.0)
+    assert isinstance(balance, pd.Series)
+    assert len(balance) > 0
+    assert balance.name == "balance"
+    # Last value should be close to current_balance
+    assert abs(balance.iloc[-1] - 5000.0) < 1.0
+
+
+def test_estimate_daily_balance_empty():
+    df = pd.DataFrame(columns=[
+        "time", "symbol", "side", "price", "amount", "cost",
+        "fee", "fee_currency", "market_type",
+    ])
+    balance = estimate_daily_balance(df, current_balance=1000.0)
+    assert isinstance(balance, pd.Series)
+    assert len(balance) == 0

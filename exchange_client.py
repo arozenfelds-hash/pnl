@@ -112,6 +112,48 @@ def fetch_trades(
     return all_trades
 
 
+def fetch_balance(
+    exchange_name: str,
+    api_key: str,
+    api_secret: str,
+) -> dict:
+    """
+    Fetch current account balance from an exchange.
+    Returns dict with 'total_usdt' (combined spot + futures USDT equivalent)
+    and 'balances' (per-asset breakdown).
+    """
+    total_usdt = 0.0
+    balances: dict[str, dict] = {}
+
+    for market_type in ["spot", "futures"]:
+        try:
+            exc = create_exchange(exchange_name, api_key, api_secret, market_type)
+            bal = exc.fetch_balance()
+            for asset, info in bal.get("total", {}).items():
+                amt = float(info) if info else 0.0
+                if amt <= 0:
+                    continue
+                if asset not in balances:
+                    balances[asset] = {"amount": 0.0, "market_type": market_type}
+                balances[asset]["amount"] += amt
+
+                # Convert to USDT
+                if asset in ("USDT", "USD"):
+                    total_usdt += amt
+                else:
+                    try:
+                        ticker = exc.fetch_ticker(f"{asset}/USDT")
+                        price = float(ticker.get("last", 0) or 0)
+                        total_usdt += amt * price
+                        balances[asset]["usdt_value"] = amt * price
+                    except Exception:
+                        pass
+        except Exception:
+            continue
+
+    return {"total_usdt": total_usdt, "balances": balances}
+
+
 def fetch_all_trades(
     exchange_name: str,
     api_key: str,

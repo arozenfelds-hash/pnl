@@ -218,3 +218,64 @@ def compute_most_traded(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     ).sort_values("volume", ascending=False).head(top_n)
 
     return grouped.reset_index()
+
+
+def estimate_daily_balance(
+    df: pd.DataFrame,
+    current_balance: float,
+    end_date=None,
+) -> pd.Series:
+    """
+    Estimate daily USDT balance by working backwards from current balance.
+    Uses net cash flow per day (buys reduce balance, sells increase it).
+
+    Parameters
+    ----------
+    df             : trades DataFrame
+    current_balance: current total USDT balance (from exchange API)
+    end_date       : date of the current balance (defaults to today)
+
+    Returns
+    -------
+    pd.Series with date index and estimated USDT balance values.
+    """
+    if df.empty:
+        return pd.Series(dtype=float, name="balance")
+
+    df = df.copy()
+
+    # Net cash flow per day: sells add cash, buys subtract cash
+    df["cash_flow"] = df.apply(
+        lambda r: (r["cost"] - r["fee"]) if r["side"] == "sell"
+        else -(r["cost"] + r["fee"]),
+        axis=1,
+    )
+    df["date"] = pd.to_datetime(df["time"]).dt.date
+    daily_flow = df.groupby("date")["cash_flow"].sum().sort_index()
+
+    if end_date is None:
+        end_date = pd.Timestamp.now(tz="UTC").date()
+
+    # Build complete date range
+    all_dates = pd.date_range(
+        start=min(daily_flow.index),
+        end=end_date,
+        freq="D",
+    )
+    full_flow = pd.Series(0.0, index=all_dates.date, name="cash_flow")
+    for d, v in daily_flow.items():
+        full_flow[d] = v
+
+    # Work backwards from current balance
+    cum_flow_from_end = full_flow[::-1].cumsum()[::-1]
+    # balance[day] = current_balance - sum of flows from day to end
+    # (because those flows haven't happened yet relative to that day)
+    balance = current_balance - cum_flow_from_end + full_flow
+    # Simpler: cumulative flow forward + initial balance
+    total_flow = full_flow.sum()
+    initial_balance = current_balance - total_flow
+    balance = initial_balance + full_flow.cumsum()
+
+    balance.index.name = "date"
+    balance.name = "balance"
+    return balance

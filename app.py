@@ -19,9 +19,17 @@ from analytics import (
     compute_most_traded,
     compute_pnl_by_coin,
     compute_weekly_breakdown,
+    estimate_daily_balance,
 )
-from config import load_keys, save_keys
-from exchange_client import fetch_all_trades
+from config import (
+    delete_account,
+    get_account,
+    list_accounts,
+    load_balance_snapshots,
+    save_account,
+    save_balance_snapshot,
+)
+from exchange_client import fetch_all_trades, fetch_balance
 
 # ── Page setup ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -328,24 +336,48 @@ with st.sidebar:
     st.caption("Binance & Bybit Account Statistics")
     st.markdown("---")
 
-    st.markdown("### Exchange")
-    p_exchange = st.radio("Exchange", ["Binance", "Bybit"], horizontal=True,
-                           label_visibility="collapsed")
-    exchange_id = p_exchange.lower()
-    st.markdown("---")
+    # ── Account management ────────────────────────────────────────────────
+    st.markdown("### Account")
+    saved_accounts = list_accounts()
 
-    st.markdown("### API Keys")
-    p_save_keys = st.checkbox("Save keys locally", value=False,
-                               help="Save to ~/.pnl/config.env (outside repo)")
+    account_mode = st.radio("Mode", ["Saved Account", "New / Manual"], horizontal=True,
+                             label_visibility="collapsed")
 
-    # Load saved keys if available
-    saved = load_keys()
-    _key_prefix = f"{exchange_id}_"
-    _default_key = saved.get(f"{_key_prefix}api_key", "")
-    _default_secret = saved.get(f"{_key_prefix}api_secret", "")
+    if account_mode == "Saved Account" and saved_accounts:
+        p_account_name = st.selectbox("Select Account", saved_accounts)
+        acct = get_account(p_account_name)
+        if acct:
+            p_exchange = acct["exchange"].capitalize()
+            exchange_id = acct["exchange"]
+            p_api_key = acct["api_key"]
+            p_api_secret = acct["api_secret"]
+        else:
+            p_exchange = "Binance"
+            exchange_id = "binance"
+            p_api_key = ""
+            p_api_secret = ""
 
-    p_api_key = st.text_input("API Key", value=_default_key, type="password")
-    p_api_secret = st.text_input("API Secret", value=_default_secret, type="password")
+        # Delete button
+        if st.button("Delete Account", type="secondary"):
+            delete_account(p_account_name)
+            st.rerun()
+    else:
+        if not saved_accounts:
+            st.caption("No saved accounts yet.")
+
+        st.markdown("### Exchange")
+        p_exchange = st.radio("Exchange", ["Binance", "Bybit"], horizontal=True,
+                               label_visibility="collapsed")
+        exchange_id = p_exchange.lower()
+
+        st.markdown("### API Keys")
+        p_account_name = st.text_input("Account Name", placeholder="e.g. Main, Bot1, Bybit-DCA")
+        p_api_key = st.text_input("API Key", type="password")
+        p_api_secret = st.text_input("API Secret", type="password")
+
+        p_save_account = st.checkbox("Save account", value=True,
+                                      help="Save to ~/.pnl/accounts.json (outside repo)")
+
     st.markdown("---")
 
     st.markdown("### Period")
@@ -368,18 +400,22 @@ with st.sidebar:
 if "trades_df" not in st.session_state:
     st.session_state["trades_df"] = None
     st.session_state["exchange_name"] = None
+    st.session_state["account_name"] = None
+    st.session_state["current_balance"] = None
 
 if p_connect:
     if not p_api_key or not p_api_secret:
         st.error("Please enter both API Key and API Secret.")
         st.stop()
 
-    # Save keys if requested
-    if p_save_keys:
-        save_keys({
-            f"{exchange_id}_api_key": p_api_key,
-            f"{exchange_id}_api_secret": p_api_secret,
-        })
+    if not p_account_name:
+        st.error("Please enter an account name.")
+        st.stop()
+
+    # Save account if in manual mode and save is checked
+    if account_mode != "Saved Account":
+        if p_save_account:
+            save_account(p_account_name, exchange_id, p_api_key, p_api_secret)
 
     since_ms = int(pd.Timestamp(p_start_date, tz="UTC").timestamp() * 1000)
 
@@ -390,6 +426,16 @@ if p_connect:
             st.error(f"Failed to fetch trades: {e}")
             st.stop()
 
+    # Fetch current balance and snapshot it
+    current_balance = None
+    with st.spinner("Fetching current balance..."):
+        try:
+            bal_info = fetch_balance(exchange_id, p_api_key, p_api_secret)
+            current_balance = bal_info["total_usdt"]
+            save_balance_snapshot(p_account_name, current_balance)
+        except Exception:
+            pass
+
     # Filter by end date
     if not trades_df.empty:
         end_ts = pd.Timestamp(p_end_date, tz="UTC") + pd.Timedelta(days=1)
@@ -397,10 +443,14 @@ if p_connect:
 
     st.session_state["trades_df"] = trades_df
     st.session_state["exchange_name"] = p_exchange
+    st.session_state["account_name"] = p_account_name
+    st.session_state["current_balance"] = current_balance
 
 # Get current data
 trades_df = st.session_state["trades_df"]
 exchange_name = st.session_state["exchange_name"]
+account_name = st.session_state["account_name"]
+current_balance = st.session_state["current_balance"]
 
 if trades_df is None:
     st.markdown(f"""
@@ -412,6 +462,22 @@ if trades_df is None:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Show saved accounts summary
+    if saved_accounts:
+        st.markdown('<hr class="noir">', unsafe_allow_html=True)
+        st.markdown(f'{_section("Saved Accounts", C_PURPLE)}', unsafe_allow_html=True)
+        for acct_name in saved_accounts:
+            acct = get_account(acct_name)
+            if acct:
+                snapshots = load_balance_snapshots(acct_name)
+                last_bal = f"${snapshots[-1]['balance_usdt']:,.2f}" if snapshots else "—"
+                st.markdown(_stat_panel([
+                    (acct_name, acct["exchange"].capitalize(), C_CYAN),
+                    ("Last Balance", last_bal, C_TEXT),
+                ]), unsafe_allow_html=True)
+                st.markdown("")
+
     st.stop()
 
 if trades_df.empty:
@@ -443,17 +509,20 @@ pnl_by_coin = compute_pnl_by_coin(filtered_df)
 
 _badge_cls = exchange_id
 _market_label = p_market if p_market != "All" else "All Markets"
+_acct_label = f" — {account_name}" if account_name else ""
+_bal_label = f" &nbsp;&middot;&nbsp; balance <span>${current_balance:,.2f}</span>" if current_balance else ""
 
 st.markdown(f"""
 <div class="hdr-banner">
     <div class="hdr-title">
-        {exchange_name} Account
+        {exchange_name}{_acct_label}
         <span class="hdr-badge {_badge_cls}">{_market_label}</span>
     </div>
     <div class="hdr-meta">
         <span>{metrics['n_trades']:,}</span> trades
         &nbsp;&middot;&nbsp; {p_start_date.isoformat()} to {p_end_date.isoformat()}
         &nbsp;&middot;&nbsp; volume <span>${metrics['total_volume']:,.2f}</span>
+        {_bal_label}
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -480,10 +549,53 @@ d6.markdown(_kpi("Total Fees",     f"${metrics['total_fees']:,.2f}",          C_
 
 st.markdown("")
 e1, e2, e3, e4 = st.columns(4, gap="small")
-e1.markdown(_kpi("Best Day",       f"${metrics['best_day_pnl']:+,.2f}",       C_GREEN),   unsafe_allow_html=True)
-e2.markdown(_kpi("Worst Day",      f"${metrics['worst_day_pnl']:+,.2f}",      C_RED),     unsafe_allow_html=True)
+if current_balance is not None:
+    # Estimate initial balance from trades
+    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+    initial_bal = float(bal_series.iloc[0]) if len(bal_series) > 0 else current_balance
+    e1.markdown(_kpi("Initial Balance", f"${initial_bal:,.2f}",               C_MUTED),   unsafe_allow_html=True)
+    e2.markdown(_kpi("Current Balance", f"${current_balance:,.2f}",           C_CYAN),    unsafe_allow_html=True)
+else:
+    e1.markdown(_kpi("Best Day",       f"${metrics['best_day_pnl']:+,.2f}",   C_GREEN),   unsafe_allow_html=True)
+    e2.markdown(_kpi("Worst Day",      f"${metrics['worst_day_pnl']:+,.2f}",  C_RED),     unsafe_allow_html=True)
 e3.markdown(_kpi("Coins Traded",   str(len(pnl_by_coin)),                     C_PURPLE),  unsafe_allow_html=True)
-e4.markdown(_kpi("Market",         _market_label,                             C_MUTED),   unsafe_allow_html=True)
+e4.markdown(_kpi("Best / Worst",   f"${metrics['best_day_pnl']:+,.0f} / ${metrics['worst_day_pnl']:+,.0f}", C_MUTED), unsafe_allow_html=True)
+
+
+# ── Balance History ──────────────────────────────────────────────────────────
+
+if current_balance is not None:
+    st.markdown('<hr class="noir">', unsafe_allow_html=True)
+    st.markdown(f'{_section("Balance History", C_CYAN)}', unsafe_allow_html=True)
+
+    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+    if len(bal_series) > 0:
+        fig_bal = go.Figure()
+        fig_bal.add_trace(go.Scatter(
+            x=list(bal_series.index),
+            y=list(bal_series.values),
+            mode="lines", name="Estimated Balance",
+            line=dict(color=C_CYAN, width=2),
+            fill="tozeroy", fillcolor="rgba(0,212,255,0.06)",
+        ))
+
+        # Overlay real snapshots if available
+        if account_name:
+            snapshots = load_balance_snapshots(account_name)
+            if len(snapshots) > 1:
+                snap_times = [pd.Timestamp(s["time"]).date() for s in snapshots]
+                snap_vals = [s["balance_usdt"] for s in snapshots]
+                fig_bal.add_trace(go.Scatter(
+                    x=snap_times, y=snap_vals,
+                    mode="markers+lines", name="Snapshots",
+                    line=dict(color=C_AMBER, width=1.5, dash="dot"),
+                    marker=dict(color=C_AMBER, size=6),
+                ))
+
+        fig_bal.update_layout(**CHART_LAYOUT, height=300)
+        fig_bal.update_yaxes(**GRID_STYLE)
+        fig_bal.update_xaxes(**GRID_STYLE)
+        st.plotly_chart(fig_bal, width="stretch")
 
 
 # ── Equity Curve ─────────────────────────────────────────────────────────────
@@ -540,13 +652,11 @@ st.markdown('<hr class="noir">', unsafe_allow_html=True)
 st.markdown(f'{_section("Daily P&L Heatmap", C_AMBER)}', unsafe_allow_html=True)
 
 if len(daily_pnl) > 1:
-    # Build a complete date range
     dates = pd.date_range(start=min(daily_pnl.index), end=max(daily_pnl.index), freq="D")
     full_daily = pd.Series(0.0, index=dates.date)
     for d, v in daily_pnl.items():
         full_daily[d] = v
 
-    # Create heatmap data: weeks as rows, weekdays as columns
     cal_data = []
     for d in full_daily.index:
         dt = pd.Timestamp(d)
@@ -621,7 +731,6 @@ with tab_pairs:
         mt_disp = most_traded.copy()
         mt_disp["volume"] = mt_disp["volume"].map("${:,.2f}".format)
         mt_disp["trades"] = mt_disp["trades"].map(str)
-        # Add P&L column
         mt_disp["pnl"] = most_traded["symbol"].map(
             lambda s: f"${pnl_by_coin.get(s, 0.0):+,.2f}"
         )
@@ -647,6 +756,11 @@ with tab_breakdown:
                 "Date": [str(d) for d in daily_pnl.index],
                 "P&L": [f"${v:+,.2f}" for v in daily_pnl.values],
             })
+            # Add balance column if available
+            if current_balance is not None:
+                bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+                bal_map = {str(d): f"${v:,.2f}" for d, v in bal_series.items()}
+                daily_disp["Balance"] = daily_disp["Date"].map(lambda d: bal_map.get(d, "—"))
             st.dataframe(daily_disp, width="stretch", hide_index=True,
                          height=min(36 * (len(daily_disp) + 1) + 10, 400))
         else:
