@@ -29,7 +29,12 @@ from config import (
     save_account,
     save_balance_snapshot,
 )
-from exchange_client import fetch_all_trades, fetch_balance
+from exchange_client import (
+    fetch_all_trades,
+    fetch_balance,
+    fetch_deposits_withdrawals,
+    fetch_positions,
+)
 
 # ── Page setup ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -402,6 +407,12 @@ if "trades_df" not in st.session_state:
     st.session_state["exchange_name"] = None
     st.session_state["account_name"] = None
     st.session_state["current_balance"] = None
+    st.session_state["spot_balance"] = None
+    st.session_state["futures_balance"] = None
+    st.session_state["positions_df"] = None
+    st.session_state["transfers_df"] = None
+    st.session_state["bal_label_a"] = "Spot"
+    st.session_state["bal_label_b"] = "Futures"
 
 if p_connect:
     if not p_api_key or not p_api_secret:
@@ -421,18 +432,42 @@ if p_connect:
 
     with st.spinner(f"Fetching trades from {p_exchange}..."):
         try:
-            trades_df = fetch_all_trades(exchange_id, p_api_key, p_api_secret, since_ms=since_ms)
+            trades_df = fetch_all_trades(exchange_id, p_api_key, p_api_secret, since_ms=since_ms, account_name=p_account_name)
         except Exception as e:
             st.error(f"Failed to fetch trades: {e}")
             st.stop()
 
     # Fetch current balance and snapshot it
     current_balance = None
+    spot_balance = None
+    futures_balance = None
     with st.spinner("Fetching current balance..."):
         try:
             bal_info = fetch_balance(exchange_id, p_api_key, p_api_secret)
             current_balance = bal_info["total_usdt"]
+            spot_balance = bal_info["spot_usdt"]
+            futures_balance = bal_info["futures_usdt"]
+            st.session_state["bal_label_a"] = bal_info["account_a_label"]
+            st.session_state["bal_label_b"] = bal_info["account_b_label"]
             save_balance_snapshot(p_account_name, current_balance)
+        except Exception:
+            pass
+
+    # Fetch open positions
+    positions_df = None
+    with st.spinner("Fetching open positions..."):
+        try:
+            positions_df = fetch_positions(exchange_id, p_api_key, p_api_secret)
+        except Exception:
+            pass
+
+    # Fetch deposits/withdrawals
+    transfers_df = None
+    with st.spinner("Fetching deposits & withdrawals..."):
+        try:
+            transfers_df = fetch_deposits_withdrawals(
+                exchange_id, p_api_key, p_api_secret, since_ms=since_ms,
+            )
         except Exception:
             pass
 
@@ -445,12 +480,22 @@ if p_connect:
     st.session_state["exchange_name"] = p_exchange
     st.session_state["account_name"] = p_account_name
     st.session_state["current_balance"] = current_balance
+    st.session_state["spot_balance"] = spot_balance
+    st.session_state["futures_balance"] = futures_balance
+    st.session_state["positions_df"] = positions_df
+    st.session_state["transfers_df"] = transfers_df
 
 # Get current data
 trades_df = st.session_state["trades_df"]
 exchange_name = st.session_state["exchange_name"]
 account_name = st.session_state["account_name"]
 current_balance = st.session_state["current_balance"]
+spot_balance = st.session_state["spot_balance"]
+futures_balance = st.session_state["futures_balance"]
+positions_df = st.session_state.get("positions_df")
+transfers_df = st.session_state.get("transfers_df")
+bal_label_a = st.session_state.get("bal_label_a", "Spot")
+bal_label_b = st.session_state.get("bal_label_b", "Futures")
 
 if trades_df is None:
     st.markdown(f"""
@@ -548,18 +593,80 @@ d5.markdown(_kpi("Avg Trade Size", f"${metrics['avg_trade_size']:,.2f}",      C_
 d6.markdown(_kpi("Total Fees",     f"${metrics['total_fees']:,.2f}",          C_AMBER),   unsafe_allow_html=True)
 
 st.markdown("")
-e1, e2, e3, e4 = st.columns(4, gap="small")
 if current_balance is not None:
-    # Estimate initial balance from trades
-    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+    e1, e2, e3, e4, e5, e6 = st.columns(6, gap="small")
+    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date, transfers_df)
     initial_bal = float(bal_series.iloc[0]) if len(bal_series) > 0 else current_balance
     e1.markdown(_kpi("Initial Balance", f"${initial_bal:,.2f}",               C_MUTED),   unsafe_allow_html=True)
-    e2.markdown(_kpi("Current Balance", f"${current_balance:,.2f}",           C_CYAN),    unsafe_allow_html=True)
+    e2.markdown(_kpi("Total Balance",   f"${current_balance:,.2f}",           C_CYAN),    unsafe_allow_html=True)
+    e3.markdown(_kpi(bal_label_a,         f"${spot_balance:,.2f}" if spot_balance else "—", C_AMBER), unsafe_allow_html=True)
+    e4.markdown(_kpi(bal_label_b,         f"${futures_balance:,.2f}" if futures_balance else "—", C_PURPLE), unsafe_allow_html=True)
+    e5.markdown(_kpi("Coins Traded",    str(len(pnl_by_coin)),                C_PURPLE),  unsafe_allow_html=True)
+    e6.markdown(_kpi("Best / Worst",    f"${metrics['best_day_pnl']:+,.0f} / ${metrics['worst_day_pnl']:+,.0f}", C_MUTED), unsafe_allow_html=True)
 else:
+    e1, e2, e3, e4 = st.columns(4, gap="small")
     e1.markdown(_kpi("Best Day",       f"${metrics['best_day_pnl']:+,.2f}",   C_GREEN),   unsafe_allow_html=True)
     e2.markdown(_kpi("Worst Day",      f"${metrics['worst_day_pnl']:+,.2f}",  C_RED),     unsafe_allow_html=True)
-e3.markdown(_kpi("Coins Traded",   str(len(pnl_by_coin)),                     C_PURPLE),  unsafe_allow_html=True)
-e4.markdown(_kpi("Best / Worst",   f"${metrics['best_day_pnl']:+,.0f} / ${metrics['worst_day_pnl']:+,.0f}", C_MUTED), unsafe_allow_html=True)
+    e3.markdown(_kpi("Coins Traded",   str(len(pnl_by_coin)),                 C_PURPLE),  unsafe_allow_html=True)
+    e4.markdown(_kpi("Best / Worst",   f"${metrics['best_day_pnl']:+,.0f} / ${metrics['worst_day_pnl']:+,.0f}", C_MUTED), unsafe_allow_html=True)
+
+
+# ── Open Positions ───────────────────────────────────────────────────────────
+
+if positions_df is not None and not positions_df.empty:
+    st.markdown('<hr class="noir">', unsafe_allow_html=True)
+    st.markdown(f'{_section("Open Positions", C_PURPLE)}', unsafe_allow_html=True)
+
+    total_upnl = positions_df["unrealized_pnl"].sum()
+    total_notional = positions_df["notional"].sum()
+    p1, p2 = st.columns(2, gap="small")
+    p1.markdown(_kpi("Total Unrealized P&L", f"${total_upnl:+,.2f}", _pnl_color(total_upnl)), unsafe_allow_html=True)
+    p2.markdown(_kpi("Total Notional", f"${total_notional:,.2f}", C_CYAN), unsafe_allow_html=True)
+    st.markdown("")
+
+    pos_disp = positions_df.copy()
+    pos_disp["entry_price"] = pos_disp["entry_price"].map("${:,.4f}".format)
+    pos_disp["mark_price"] = pos_disp["mark_price"].map("${:,.4f}".format)
+    pos_disp["notional"] = pos_disp["notional"].map("${:,.2f}".format)
+    pos_disp["unrealized_pnl"] = positions_df["unrealized_pnl"].map("${:+,.2f}".format)
+    pos_disp["size"] = pos_disp["size"].map("{:.4f}".format)
+    st.dataframe(
+        pos_disp.rename(columns={
+            "symbol": "Symbol", "side": "Side", "size": "Size",
+            "entry_price": "Entry", "mark_price": "Mark",
+            "notional": "Notional", "unrealized_pnl": "Unreal. P&L",
+            "leverage": "Lev", "margin_mode": "Margin",
+        }),
+        width="stretch", hide_index=True,
+    )
+
+
+# ── Deposits & Withdrawals ──────────────────────────────────────────────────
+
+if transfers_df is not None and not transfers_df.empty:
+    st.markdown('<hr class="noir">', unsafe_allow_html=True)
+    st.markdown(f'{_section("Deposits & Withdrawals", C_AMBER)}', unsafe_allow_html=True)
+
+    deps = transfers_df[transfers_df["type"] == "deposit"]["amount"].sum()
+    wds = transfers_df[transfers_df["type"] == "withdrawal"]["amount"].sum()
+    net = deps - wds
+    t1, t2, t3 = st.columns(3, gap="small")
+    t1.markdown(_kpi("Total Deposited", f"${deps:,.2f}", C_GREEN), unsafe_allow_html=True)
+    t2.markdown(_kpi("Total Withdrawn", f"${wds:,.2f}", C_RED), unsafe_allow_html=True)
+    t3.markdown(_kpi("Net Transfers", f"${net:+,.2f}", _pnl_color(net)), unsafe_allow_html=True)
+    st.markdown("")
+
+    tf_disp = transfers_df.copy()
+    tf_disp["time"] = pd.to_datetime(tf_disp["time"]).dt.strftime("%Y-%m-%d %H:%M")
+    tf_disp["amount"] = transfers_df["amount"].map("{:,.4f}".format)
+    st.dataframe(
+        tf_disp.rename(columns={
+            "time": "Time", "type": "Type", "currency": "Currency",
+            "amount": "Amount", "status": "Status",
+        }),
+        width="stretch", hide_index=True,
+        height=min(36 * (len(tf_disp) + 1) + 10, 400),
+    )
 
 
 # ── Balance History ──────────────────────────────────────────────────────────
@@ -568,7 +675,7 @@ if current_balance is not None:
     st.markdown('<hr class="noir">', unsafe_allow_html=True)
     st.markdown(f'{_section("Balance History", C_CYAN)}', unsafe_allow_html=True)
 
-    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+    bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date, transfers_df)
     if len(bal_series) > 0:
         fig_bal = go.Figure()
         fig_bal.add_trace(go.Scatter(
@@ -686,9 +793,8 @@ if len(daily_pnl) > 1:
             zmin=-max_abs, zmax=max_abs,
             showscale=True,
             colorbar=dict(
-                title="P&L",
+                title=dict(text="P&L", font=dict(size=9, color=C_MUTED)),
                 tickfont=dict(size=9, color=C_MUTED),
-                titlefont=dict(size=9, color=C_MUTED),
             ),
             hovertemplate="Week %{x}<br>%{y}<br>P&L: $%{z:,.2f}<extra></extra>",
         ))
@@ -713,9 +819,25 @@ with tab_log:
     disp["amount"]   = disp["amount"].map("{:.6f}".format)
     disp["cost"]     = disp["cost"].map("${:,.2f}".format)
     disp["fee"]      = disp["fee"].map("${:,.4f}".format)
+
+    # Descriptive action: open long / close short / open short / close long
+    def _trade_action(row):
+        side = row.get("side", "")
+        market = row.get("market_type", "")
+        reduce = row.get("reduce_only", False)
+        if market != "futures":
+            return side  # spot: just buy/sell
+        if side == "buy":
+            return "Close Short" if reduce else "Open Long"
+        elif side == "sell":
+            return "Close Long" if reduce else "Open Short"
+        return side
+
+    disp["action"] = filtered_df.tail(500).apply(_trade_action, axis=1)
+
     st.dataframe(
-        disp[["time", "symbol", "side", "price", "amount", "cost", "fee", "market_type"]].rename(columns={
-            "time": "Time", "symbol": "Symbol", "side": "Side", "price": "Price",
+        disp[["time", "symbol", "action", "price", "amount", "cost", "fee", "market_type"]].rename(columns={
+            "time": "Time", "symbol": "Symbol", "action": "Action", "price": "Price",
             "amount": "Amount", "cost": "USD Value", "fee": "Fee", "market_type": "Market",
         }),
         width="stretch", hide_index=True,
@@ -758,7 +880,7 @@ with tab_breakdown:
             })
             # Add balance column if available
             if current_balance is not None:
-                bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date)
+                bal_series = estimate_daily_balance(filtered_df, current_balance, p_end_date, transfers_df)
                 bal_map = {str(d): f"${v:,.2f}" for d, v in bal_series.items()}
                 daily_disp["Balance"] = daily_disp["Date"].map(lambda d: bal_map.get(d, "—"))
             st.dataframe(daily_disp, width="stretch", hide_index=True,

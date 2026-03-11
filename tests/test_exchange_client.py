@@ -52,6 +52,7 @@ def test_normalize_trades_binance_format():
     assert len(df) == 2
     assert list(df.columns) == [
         "time", "symbol", "side", "price", "amount", "cost", "fee", "fee_currency",
+        "reduce_only",
     ]
     assert df.iloc[0]["side"] == "buy"
     assert df.iloc[1]["price"] == 35100.0

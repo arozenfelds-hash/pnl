@@ -224,16 +224,19 @@ def estimate_daily_balance(
     df: pd.DataFrame,
     current_balance: float,
     end_date=None,
+    transfers_df: pd.DataFrame | None = None,
 ) -> pd.Series:
     """
     Estimate daily USDT balance by working backwards from current balance.
     Uses net cash flow per day (buys reduce balance, sells increase it).
+    Deposits/withdrawals are factored into balance but NOT into P&L.
 
     Parameters
     ----------
     df             : trades DataFrame
     current_balance: current total USDT balance (from exchange API)
     end_date       : date of the current balance (defaults to today)
+    transfers_df   : deposits/withdrawals DataFrame (from fetch_deposits_withdrawals)
 
     Returns
     -------
@@ -253,12 +256,29 @@ def estimate_daily_balance(
     df["date"] = pd.to_datetime(df["time"]).dt.date
     daily_flow = df.groupby("date")["cash_flow"].sum().sort_index()
 
+    # Add deposit/withdrawal flows (these affect balance but not P&L)
+    daily_transfers = pd.Series(dtype=float)
+    if transfers_df is not None and not transfers_df.empty:
+        tf = transfers_df.copy()
+        tf["date"] = pd.to_datetime(tf["time"]).dt.date
+        # Only count completed transfers
+        tf = tf[tf["status"].isin(["ok", "successful", "completed", "success"])]
+        if not tf.empty:
+            tf["transfer_flow"] = tf.apply(
+                lambda r: r["amount"] if r["type"] == "deposit" else -r["amount"],
+                axis=1,
+            )
+            daily_transfers = tf.groupby("date")["transfer_flow"].sum()
+
     if end_date is None:
         end_date = pd.Timestamp.now(tz="UTC").date()
 
     # Build complete date range
+    start_dates = [min(daily_flow.index)]
+    if len(daily_transfers) > 0:
+        start_dates.append(min(daily_transfers.index))
     all_dates = pd.date_range(
-        start=min(daily_flow.index),
+        start=min(start_dates),
         end=end_date,
         freq="D",
     )
@@ -266,15 +286,16 @@ def estimate_daily_balance(
     for d, v in daily_flow.items():
         full_flow[d] = v
 
-    # Work backwards from current balance
-    cum_flow_from_end = full_flow[::-1].cumsum()[::-1]
-    # balance[day] = current_balance - sum of flows from day to end
-    # (because those flows haven't happened yet relative to that day)
-    balance = current_balance - cum_flow_from_end + full_flow
-    # Simpler: cumulative flow forward + initial balance
-    total_flow = full_flow.sum()
-    initial_balance = current_balance - total_flow
-    balance = initial_balance + full_flow.cumsum()
+    full_transfers = pd.Series(0.0, index=all_dates.date, name="transfers")
+    for d, v in daily_transfers.items():
+        if d in full_transfers.index:
+            full_transfers[d] = v
+
+    # Combined flow (trades + transfers) for balance estimation
+    combined_flow = full_flow + full_transfers
+    total_combined = combined_flow.sum()
+    initial_balance = current_balance - total_combined
+    balance = initial_balance + combined_flow.cumsum()
 
     balance.index.name = "date"
     balance.name = "balance"
