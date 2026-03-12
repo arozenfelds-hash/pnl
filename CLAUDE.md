@@ -12,7 +12,7 @@ pnl/
 ├── app.py              # Streamlit dashboard (UI, charts, KPIs)
 ├── exchange_client.py  # CCXT wrapper — connect, fetch trades, balances
 ├── analytics.py        # Compute all metrics from raw trade data
-├── config.py           # API key management (save/load from ~/.pnl/config.env)
+├── config.py           # Multi-account management + balance snapshots
 ├── tests/              # pytest test suite
 ├── requirements.txt
 ├── deploy.sh
@@ -37,8 +37,22 @@ pnl/
 - **Activity**: # trades, avg trade size, total volume, fees paid
 - **Breakdown**: P&L by coin, daily/weekly aggregates, most traded pairs
 
+### Multi-Account Support
+- Named accounts stored in `~/.pnl/accounts.json` (outside repo)
+- Functions: `list_accounts()`, `get_account()`, `save_account()`, `delete_account()`
+- Sidebar account selector: choose saved account or enter new credentials
+- Each account tracked independently with its own data and snapshots
+- Legacy `config.env` key storage still supported
+
+### Balance Tracking
+- **Snapshots**: Current balance fetched from exchange API on each connect, saved to `~/.pnl/snapshots/{name}.json`
+- **Estimation**: Daily balance reconstructed from trade cash flows (working backwards from current balance)
+- `fetch_balance()` in exchange_client.py — fetches spot + futures, converts all assets to USDT
+- `estimate_daily_balance()` in analytics.py — net cash flow per day, cumulative from initial
+- Balance history chart shows estimated daily line + snapshot points overlay
+
 ### API Key Security
-- Keys stored in `~/.pnl/config.env` (outside repo)
+- Keys stored in `~/.pnl/accounts.json` (outside repo)
 - Only read-only permissions required
 - Option to enter per-session (no storage) or save locally
 

@@ -276,6 +276,44 @@ def _save_cache(df: pd.DataFrame, account_name: str, exchange_name: str, market_
     df.to_parquet(path, index=False)
 
 
+def _extract_bybit_usd_total(bal: dict) -> float | None:
+    """
+    Extract Bybit's reported USD total from the raw API response.
+    Bybit returns totalEquity/totalWalletBalance in result.list[0],
+    or per-coin usdValue for funding accounts.
+    """
+    raw_info = bal.get("info", {})
+    acct_list = raw_info.get("result", {}).get("list", [])
+    if not acct_list:
+        return None
+
+    acct_data = acct_list[0]
+
+    # Unified Trading: has totalEquity or totalWalletBalance
+    equity = acct_data.get("totalEquity") or acct_data.get("totalWalletBalance")
+    if equity:
+        try:
+            return float(equity)
+        except (ValueError, TypeError):
+            pass
+
+    # Funding account: sum individual coin usdValue fields
+    coins = acct_data.get("coin", [])
+    if coins:
+        usd_sum = 0.0
+        for coin in coins:
+            usd_val = coin.get("usdValue")
+            if usd_val:
+                try:
+                    usd_sum += float(usd_val)
+                except (ValueError, TypeError):
+                    pass
+        if usd_sum > 0:
+            return usd_sum
+
+    return None
+
+
 def fetch_balance(
     exchange_name: str,
     api_key: str,
@@ -285,6 +323,7 @@ def fetch_balance(
     Fetch current account balance from an exchange.
     Returns dict with 'total_usdt' (combined), 'spot_usdt', 'futures_usdt',
     and 'balances' (per-asset breakdown).
+    Uses exchange-reported USD totals when available (matches what user sees).
     """
     total_usdt = 0.0
     spot_usdt = 0.0
@@ -308,26 +347,38 @@ def fetch_balance(
         try:
             exc = create_exchange(exchange_name, api_key, api_secret, market_type)
             bal = exc.fetch_balance(bal_params) if bal_params else exc.fetch_balance()
-            for asset, info in bal.get("total", {}).items():
-                amt = float(info) if info else 0.0
+
+            # Use exchange-reported USD total if available (matches user's UI)
+            reported = _extract_bybit_usd_total(bal) if exchange_name == "bybit" else None
+
+            if reported is not None:
+                market_total = reported
+            else:
+                # Fallback: manual conversion via ticker prices
+                for asset, amt_val in bal.get("total", {}).items():
+                    amt = float(amt_val) if amt_val else 0.0
+                    if amt <= 0:
+                        continue
+                    if asset in ("USDT", "USD"):
+                        market_total += amt
+                    else:
+                        try:
+                            ticker = exc.fetch_ticker(f"{asset}/USDT")
+                            price = float(ticker.get("last", 0) or 0)
+                            market_total += amt * price
+                        except Exception:
+                            pass
+
+            # Record per-asset breakdown
+            label = "funding" if i == 0 else "trading"
+            for asset, amt_val in bal.get("total", {}).items():
+                amt = float(amt_val) if amt_val else 0.0
                 if amt <= 0:
                     continue
-                label = "funding" if i == 0 else "trading"
                 if asset not in balances:
                     balances[asset] = {"amount": 0.0, "market_type": label}
                 balances[asset]["amount"] += amt
 
-                # Convert to USDT
-                if asset in ("USDT", "USD"):
-                    market_total += amt
-                else:
-                    try:
-                        ticker = exc.fetch_ticker(f"{asset}/USDT")
-                        price = float(ticker.get("last", 0) or 0)
-                        market_total += amt * price
-                        balances[asset]["usdt_value"] = amt * price
-                    except Exception:
-                        pass
         except Exception:
             continue
 
@@ -454,6 +505,7 @@ def fetch_all_trades(
     api_secret: str,
     since_ms: int | None = None,
     account_name: str | None = None,
+    market_filter: str = "all",
 ) -> pd.DataFrame:
     """
     Fetch all trades (spot + futures) from an exchange.
@@ -461,6 +513,7 @@ def fetch_all_trades(
     only fetches new trades since last cached timestamp.
     Returns unified DataFrame with a 'market_type' column.
 
+    market_filter: "all" | "spot" | "futures" — controls which markets to fetch.
     Bybit: single unified account — fetch once, classify by symbol format.
     Binance: separate spot + futures accounts — fetch each independently.
     """
@@ -470,7 +523,13 @@ def fetch_all_trades(
     if exchange_name == "bybit":
         market_types = ["futures"]  # unified account, fetch once via swap
     else:
-        market_types = ["spot", "futures"]
+        # Binance: only fetch the requested market type(s)
+        if market_filter == "spot":
+            market_types = ["spot"]
+        elif market_filter == "futures":
+            market_types = ["futures"]
+        else:
+            market_types = ["spot", "futures"]
 
     for market_type in market_types:
         try:

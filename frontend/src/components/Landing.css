@@ -1,0 +1,98 @@
+.landing {
+  max-width: 700px;
+  margin: 60px auto;
+}
+
+.landing-banner {
+  background: var(--banner-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--purple), var(--green));
+}
+
+.banner-glow {
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(0,212,255,0.08), transparent 70%);
+  pointer-events: none;
+}
+
+.landing-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+  color: var(--heading-color);
+  margin: 0 0 12px;
+}
+
+.landing-desc {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.landing-desc em {
+  color: var(--text);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.saved-accounts {
+  margin-top: 32px;
+}
+
+.section-header {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--heading-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+.dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+
+.account-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+
+.account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.account-name { color: var(--cyan); font-weight: 500; }
+.account-exchange { color: var(--muted); text-transform: capitalize; }
+.account-label { color: var(--muted); font-size: 0.78rem; }
+.account-value { color: var(--text); font-weight: 500; }

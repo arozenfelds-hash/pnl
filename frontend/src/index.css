@@ -1,0 +1,75 @@
+:root, [data-theme="dark"] {
+  --bg: #06080d;
+  --surface: #0c1018;
+  --border: #1a1f2e;
+  --border2: #252b3b;
+  --text: #c8d1dc;
+  --muted: #5a6578;
+  --green: #00e68a;
+  --red: #ff3b5c;
+  --cyan: #00d4ff;
+  --purple: #a855f7;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --sidebar-bg-start: #080c14;
+  --sidebar-bg-mid: #0a0e18;
+  --sidebar-border: var(--border);
+  --card-bg: linear-gradient(135deg, rgba(12,16,24,0.95), rgba(18,24,36,0.9));
+  --chart-bg: linear-gradient(135deg, rgba(12,16,24,0.6), rgba(6,8,13,0.8));
+  --banner-bg: linear-gradient(135deg, rgba(0,212,255,0.06) 0%, rgba(168,85,247,0.06) 50%, rgba(0,230,138,0.04) 100%);
+  --heading-color: #eef1f6;
+  --input-bg: rgba(12,16,24,0.8);
+  --hover-bg: rgba(0,212,255,0.03);
+  --active-bg: rgba(0,212,255,0.08);
+}
+
+[data-theme="light"] {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #e0e3e8;
+  --border2: #cdd1d8;
+  --text: #1a1d24;
+  --muted: #6b7280;
+  --green: #059669;
+  --red: #dc2626;
+  --cyan: #0891b2;
+  --purple: #7c3aed;
+  --amber: #d97706;
+  --blue: #2563eb;
+  --sidebar-bg-start: #ebedf0;
+  --sidebar-bg-mid: #e8eaee;
+  --sidebar-border: var(--border);
+  --card-bg: linear-gradient(135deg, #ffffff, #f8f9fb);
+  --chart-bg: linear-gradient(135deg, #ffffff, #fafbfc);
+  --banner-bg: linear-gradient(135deg, rgba(8,145,178,0.06) 0%, rgba(124,58,237,0.06) 50%, rgba(5,150,105,0.04) 100%);
+  --heading-color: #111318;
+  --input-bg: #ffffff;
+  --hover-bg: rgba(8,145,178,0.04);
+  --active-bg: rgba(8,145,178,0.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  display: flex;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+input, select, button { font-family: 'DM Mono', monospace; }
