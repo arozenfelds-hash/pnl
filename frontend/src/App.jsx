@@ -4,7 +4,9 @@ import Dashboard from './components/Dashboard'
 import Landing from './components/Landing'
 import './App.css'
 
-const API = 'http://localhost:8505'
+const API = window.location.port === '5173'
+  ? 'http://localhost:8505'
+  : `${window.location.protocol}//${window.location.hostname}:8505`
 
 export default function App() {
   const [data, setData] = useState(null)
