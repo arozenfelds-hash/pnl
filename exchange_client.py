@@ -73,12 +73,19 @@ def normalize_trades(raw_trades: list[dict]) -> pd.DataFrame:
         fee_info = t.get("fee") or {}
         info = t.get("info", {})
         # Detect reduce_only from CCXT or raw exchange data
+        # Binance futures: realizedPnl != 0 means closing trade
+        realized_pnl = info.get("realizedPnl") or info.get("realizedProfit") or "0"
+        try:
+            has_realized_pnl = float(realized_pnl) != 0
+        except (ValueError, TypeError):
+            has_realized_pnl = False
         reduce_only = (
             t.get("reduceOnly")
             or info.get("reduceOnly")
             or info.get("reduce_only")
             or info.get("isReduceOnly")
             or (info.get("closedSize") and float(info.get("closedSize", 0)) > 0)
+            or has_realized_pnl
             or False
         )
         rows.append({
