@@ -148,6 +148,22 @@ def _get_traded_symbols(exchange: ccxt.Exchange) -> list[str]:
     except Exception:
         pass
 
+    # Method 4: Closed P&L history (Bybit) — discovers historically traded symbols
+    try:
+        if hasattr(exchange, "privateGetV5PositionClosedPnl"):
+            result = exchange.privateGetV5PositionClosedPnl({
+                "category": "linear", "limit": "100",
+            })
+            for item in result.get("result", {}).get("list", []):
+                sym = item.get("symbol", "")
+                # Convert Bybit raw symbol (e.g. "ETHUSDT") to CCXT format
+                for market_sym, market in exchange.markets.items():
+                    if market.get("id") == sym:
+                        symbols.add(market_sym)
+                        break
+    except Exception:
+        pass
+
     # If we found some symbols, also load cached symbols from previous runs
     cached = _load_cached_symbols(exchange)
     symbols.update(cached)
