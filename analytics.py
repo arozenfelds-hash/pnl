@@ -228,8 +228,8 @@ def estimate_daily_balance(
 ) -> pd.Series:
     """
     Estimate daily USDT balance by working backwards from current balance.
-    Uses net cash flow per day (buys reduce balance, sells increase it).
-    Deposits/withdrawals are factored into balance but NOT into P&L.
+    Uses daily P&L from round-trip matching (works for futures + spot).
+    initial_balance = current_balance - total_pnl - net_transfers
 
     Parameters
     ----------
@@ -245,23 +245,17 @@ def estimate_daily_balance(
     if df.empty:
         return pd.Series(dtype=float, name="balance")
 
+    # Use daily P&L from round-trip matching (accurate for futures + spot)
+    daily_pnl = compute_daily_pnl(df)
+
     df = df.copy()
-
-    # Net cash flow per day: sells add cash, buys subtract cash
-    df["cash_flow"] = df.apply(
-        lambda r: (r["cost"] - r["fee"]) if r["side"] == "sell"
-        else -(r["cost"] + r["fee"]),
-        axis=1,
-    )
     df["date"] = pd.to_datetime(df["time"]).dt.date
-    daily_flow = df.groupby("date")["cash_flow"].sum().sort_index()
 
-    # Add deposit/withdrawal flows (these affect balance but not P&L)
+    # Deposit/withdrawal flows
     daily_transfers = pd.Series(dtype=float)
     if transfers_df is not None and not transfers_df.empty:
         tf = transfers_df.copy()
         tf["date"] = pd.to_datetime(tf["time"]).dt.date
-        # Only count completed transfers
         tf = tf[tf["status"].isin(["ok", "successful", "completed", "success"])]
         if not tf.empty:
             tf["transfer_flow"] = tf.apply(
@@ -273,29 +267,35 @@ def estimate_daily_balance(
     if end_date is None:
         end_date = pd.Timestamp.now(tz="UTC").date()
 
-    # Build complete date range
-    start_dates = [min(daily_flow.index)]
+    # Build date range
+    start_dates = [df["date"].min()]
+    if len(daily_pnl) > 0:
+        start_dates.append(min(daily_pnl.index))
     if len(daily_transfers) > 0:
         start_dates.append(min(daily_transfers.index))
-    all_dates = pd.date_range(
-        start=min(start_dates),
-        end=end_date,
-        freq="D",
-    )
-    full_flow = pd.Series(0.0, index=all_dates.date, name="cash_flow")
-    for d, v in daily_flow.items():
-        full_flow[d] = v
 
-    full_transfers = pd.Series(0.0, index=all_dates.date, name="transfers")
+    all_dates = pd.date_range(start=min(start_dates), end=end_date, freq="D")
+    date_index = all_dates.date
+
+    # Align daily P&L to full date range
+    full_pnl = pd.Series(0.0, index=date_index, name="pnl")
+    for d, v in daily_pnl.items():
+        if d in full_pnl.index:
+            full_pnl[d] = v
+
+    full_transfers = pd.Series(0.0, index=date_index, name="transfers")
     for d, v in daily_transfers.items():
         if d in full_transfers.index:
             full_transfers[d] = v
 
-    # Combined flow (trades + transfers) for balance estimation
-    combined_flow = full_flow + full_transfers
-    total_combined = combined_flow.sum()
-    initial_balance = current_balance - total_combined
-    balance = initial_balance + combined_flow.cumsum()
+    # initial_balance = current_balance - total_pnl - net_transfers
+    total_pnl = full_pnl.sum()
+    net_transfers = full_transfers.sum()
+    initial_balance = current_balance - total_pnl - net_transfers
+
+    # Build balance forward: initial + cumsum(daily_pnl + transfers)
+    daily_change = full_pnl + full_transfers
+    balance = initial_balance + daily_change.cumsum()
 
     balance.index.name = "date"
     balance.name = "balance"
