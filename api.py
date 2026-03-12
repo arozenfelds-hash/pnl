@@ -4,9 +4,12 @@ Exposes REST endpoints wrapping exchange_client.py, analytics.py, config.py.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from analytics import (
@@ -276,6 +279,19 @@ def api_connect(req: ConnectRequest):
         "initial_balance": balance_history[0]["balance"] if balance_history else None,
         "coins_traded": len(pnl_by_coin),
     }
+
+
+# Serve frontend static files in production
+DIST_DIR = Path(__file__).parent / "frontend" / "dist"
+if DIST_DIR.exists():
+    from fastapi.responses import FileResponse
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file = DIST_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(DIST_DIR / "index.html")
 
 
 if __name__ == "__main__":
