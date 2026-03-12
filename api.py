@@ -288,7 +288,7 @@ def api_connect(req: ConnectRequest):
         "trade_log": trade_log,
         "total_trades": total_trades,
         "initial_balance": balance_history[0]["balance"] if balance_history else None,
-        "coins_traded": len(pnl_by_coin),
+        "coins_traded": int(filtered_df["symbol"].nunique()) if not filtered_df.empty else 0,
     }
 
 

@@ -605,6 +605,12 @@ def fetch_all_trades(
 
     result = pd.concat(all_dfs, ignore_index=True)
 
+    # Deduplicate trades that may appear in both spot and futures fetches
+    result = result.drop_duplicates(
+        subset=["time", "symbol", "side", "price", "amount"],
+        keep="last",
+    )
+
     # Filter by original since_ms if we loaded from cache
     if since_ms is not None:
         since_ts = pd.Timestamp(since_ms, unit="ms", tz="UTC")
