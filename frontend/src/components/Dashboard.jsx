@@ -71,7 +71,7 @@ export default function Dashboard({ data, info }) {
         <div className="header-top">
           <h1 className="header-title">
             {info?.exchange}
-            {info?.account && <span className="header-account"> \u2014 {info.account}</span>}
+            {info?.account && <span className="header-account"> {'\u2014'} {info.account}</span>}
           </h1>
           <span className={`header-badge ${info?.exchange?.toLowerCase()}`}>{marketLabel}</span>
         </div>
@@ -113,6 +113,21 @@ export default function Dashboard({ data, info }) {
           <KpiCard label="Coins Traded" value={data.coins_traded} color="var(--purple)" />
           <KpiCard label="Best / Worst" value={`${fmt(m.best_day_pnl, 0)} / ${fmt(m.worst_day_pnl, 0)}`} color="var(--muted)" />
         </div>
+      )}
+
+      {/* Current Holdings */}
+      {data.holdings?.length > 0 && (
+        <section>
+          <SectionHeader title="Current Holdings" color="var(--amber)" />
+          <DataTable
+            columns={[
+              { key: 'asset', label: 'Asset' },
+              { key: 'amount', label: 'Amount', render: v => Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 }) },
+              { key: 'account', label: 'Account' },
+            ]}
+            data={data.holdings}
+          />
+        </section>
       )}
 
       {/* Open Positions */}

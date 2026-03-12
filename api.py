@@ -257,6 +257,16 @@ def api_connect(req: ConnectRequest):
 
     total_trades = len(filtered_df)
 
+    # Holdings (per-asset breakdown)
+    holdings = []
+    for asset, info in bal_info.get("balances", {}).items():
+        holdings.append({
+            "asset": asset,
+            "amount": info["amount"],
+            "account": info.get("market_type", ""),
+        })
+    holdings.sort(key=lambda h: h["asset"])
+
     return {
         "balance": {
             "total": bal_info["total_usdt"],
@@ -265,6 +275,7 @@ def api_connect(req: ConnectRequest):
             "label_a": bal_info["account_a_label"],
             "label_b": bal_info["account_b_label"],
         },
+        "holdings": holdings,
         "metrics": metrics,
         "daily_pnl": daily_pnl_list,
         "pnl_by_coin": pnl_by_coin_list,

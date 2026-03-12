@@ -548,14 +548,12 @@ def fetch_all_trades(
             raw = fetch_trades(exc, symbol=None, since_ms=fetch_since)
             new_df = normalize_trades(raw)
 
-            # Classify market type per trade
-            if exchange_name == "bybit" and not new_df.empty:
-                # Bybit unified: symbols with ":USDT" suffix are futures
+            # Classify market type per trade by symbol format
+            # Symbols with ":" (e.g. BTC/USDT:USDT, BTC/USDC:USDC) are futures/perps
+            if not new_df.empty:
                 new_df["market_type"] = new_df["symbol"].apply(
-                    lambda s: "futures" if ":USDT" in s else "spot"
+                    lambda s: "futures" if ":" in s else "spot"
                 )
-            elif not new_df.empty:
-                new_df["market_type"] = market_type
 
             if cached_df is not None and not new_df.empty:
                 combined = pd.concat([cached_df, new_df], ignore_index=True)
