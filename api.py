@@ -32,6 +32,7 @@ from exchange_client import (
     fetch_all_trades,
     fetch_balance,
     fetch_deposits_withdrawals,
+    fetch_open_orders,
     fetch_positions,
 )
 
@@ -151,6 +152,13 @@ def api_connect(req: ConnectRequest):
         pos_df = fetch_positions(exchange_id, api_key, api_secret)
         if not pos_df.empty:
             positions = pos_df.to_dict("records")
+    except Exception:
+        pass
+
+    # Open Orders
+    open_orders = []
+    try:
+        open_orders = fetch_open_orders(exchange_id, api_key, api_secret)
     except Exception:
         pass
 
@@ -282,6 +290,7 @@ def api_connect(req: ConnectRequest):
         "weekly": weekly_list,
         "most_traded": most_traded_list,
         "positions": positions,
+        "open_orders": open_orders,
         "transfers": transfers,
         "balance_history": balance_history,
         "snapshots": snap_list,

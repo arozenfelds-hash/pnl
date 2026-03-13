@@ -469,6 +469,70 @@ def fetch_positions(
     return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
 
+def fetch_open_orders(
+    exchange_name: str,
+    api_key: str,
+    api_secret: str,
+) -> list[dict]:
+    """
+    Fetch all open orders (spot + futures).
+    Returns list of dicts with: symbol, type, side, price, amount, filled,
+    remaining, status, timestamp.
+    """
+    all_orders: list[dict] = []
+
+    market_types = ["futures"]
+    if exchange_name != "bybit":
+        market_types = ["spot", "futures"]
+
+    for market_type in market_types:
+        try:
+            exc = create_exchange(exchange_name, api_key, api_secret, market_type)
+            exc.load_markets()
+            if not exc.has.get("fetchOpenOrders"):
+                continue
+            orders = exc.fetch_open_orders()
+            for o in orders:
+                amt = float(o.get("amount", 0) or 0)
+                price = float(o.get("price", 0) or 0)
+                filled = float(o.get("filled", 0) or 0)
+                remaining = float(o.get("remaining", 0) or 0)
+                cost = price * amt if price and amt else 0.0
+                ts = o.get("timestamp")
+                time_str = ""
+                if ts:
+                    time_str = pd.to_datetime(ts, unit="ms", utc=True).strftime(
+                        "%Y-%m-%d %H:%M"
+                    )
+                sym = o.get("symbol", "")
+                all_orders.append({
+                    "symbol": sym,
+                    "type": o.get("type", ""),
+                    "side": o.get("side", ""),
+                    "price": price,
+                    "amount": amt,
+                    "filled": filled,
+                    "remaining": remaining,
+                    "cost": cost,
+                    "status": o.get("status", ""),
+                    "time": time_str,
+                    "market_type": "futures" if ":" in sym else "spot",
+                })
+        except Exception:
+            continue
+
+    # Deduplicate (Bybit unified may return same orders)
+    seen = set()
+    unique = []
+    for o in all_orders:
+        key = (o["symbol"], o["side"], o["price"], o["amount"], o["time"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(o)
+
+    return sorted(unique, key=lambda x: x["time"], reverse=True)
+
+
 def fetch_deposits_withdrawals(
     exchange_name: str,
     api_key: str,

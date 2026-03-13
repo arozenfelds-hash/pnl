@@ -315,6 +315,7 @@ export default function Dashboard({ data, info }) {
         <SectionHeader title="Analytics" color="var(--cyan)" />
         <div className="tabs">
           <button className={activeTab === 'log' ? 'active' : ''} onClick={() => setActiveTab('log')}>Trade Log</button>
+          <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}>Open Orders{data.open_orders?.length ? ` (${data.open_orders.length})` : ''}</button>
           <button className={activeTab === 'pairs' ? 'active' : ''} onClick={() => setActiveTab('pairs')}>Most Traded</button>
           <button className={activeTab === 'weekly' ? 'active' : ''} onClick={() => setActiveTab('weekly')}>Weekly</button>
         </div>
@@ -345,6 +346,29 @@ export default function Dashboard({ data, info }) {
               <p className="table-note">Showing last 500 of {data.total_trades.toLocaleString()} total trades.</p>
             )}
           </>
+        )}
+
+        {activeTab === 'orders' && (
+          data.open_orders?.length > 0 ? (
+            <DataTable
+              columns={[
+                { key: 'time', label: 'Time' },
+                { key: 'symbol', label: 'Symbol' },
+                { key: 'type', label: 'Type' },
+                { key: 'side', label: 'Side', style: v => ({ color: v === 'buy' ? 'var(--green)' : 'var(--red)' }) },
+                { key: 'price', label: 'Price', render: v => fmt(v, 4) },
+                { key: 'amount', label: 'Amount', render: v => Number(v).toFixed(6) },
+                { key: 'cost', label: 'Value', render: v => fmt(v) },
+                { key: 'filled', label: 'Filled', render: v => Number(v).toFixed(6) },
+                { key: 'remaining', label: 'Remaining', render: v => Number(v).toFixed(6) },
+                { key: 'market_type', label: 'Market' },
+              ]}
+              data={data.open_orders}
+              maxHeight={520}
+            />
+          ) : (
+            <p className="table-note">No open orders.</p>
+          )
         )}
 
         {activeTab === 'pairs' && (
