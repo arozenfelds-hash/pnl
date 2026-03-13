@@ -58,7 +58,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
         return {
             "total_pnl": 0.0, "pnl_pct": 0.0, "win_rate": 0.0,
             "profit_factor": 0.0, "sharpe_ratio": 0.0, "sortino_ratio": 0.0,
-            "max_drawdown": 0.0, "total_volume": 0.0, "n_trades": 0,
+            "max_drawdown": 0.0, "total_volume": 0.0, "turnover": 0.0, "n_trades": 0,
             "avg_trade_size": 0.0, "total_fees": 0.0,
             "best_day_pnl": 0.0, "worst_day_pnl": 0.0,
             "rt_count": 0, "rt_profits": [],
@@ -66,6 +66,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
 
     n_trades = len(df)
     total_volume = float(df["cost"].sum())
+    turnover = total_volume * 2  # both sides (open + close), matches exchange reporting
     total_fees = float(df["fee"].sum())
     avg_trade_size = total_volume / n_trades if n_trades > 0 else 0.0
 
@@ -123,6 +124,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
         "sortino_ratio": sortino_ratio,
         "max_drawdown": max_drawdown,
         "total_volume": total_volume,
+        "turnover": turnover,
         "n_trades": n_trades,
         "avg_trade_size": avg_trade_size,
         "total_fees": total_fees,

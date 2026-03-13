@@ -79,6 +79,7 @@ export default function Dashboard({ data, info }) {
           <span className="hl">{m.n_trades?.toLocaleString()}</span> trades
           {' \u00b7 '}{info?.start} to {info?.end}
           {' \u00b7 '}volume <span className="hl">{fmt(m.total_volume, 0)}</span>
+          {' \u00b7 '}turnover <span className="hl">{fmt(m.turnover, 0)}</span>
           {bal.total ? <>{' \u00b7 '}balance <span className="hl">{fmt(bal.total)}</span></> : null}
         </div>
       </div>
@@ -99,6 +100,7 @@ export default function Dashboard({ data, info }) {
         <KpiCard label="Sortino Ratio" value={m.sortino_ratio?.toFixed(2)} color="var(--cyan)" />
         <KpiCard label="Max Drawdown" value={fmt(m.max_drawdown)} color="var(--red)" />
         <KpiCard label="Total Volume" value={fmt(m.total_volume, 0)} color="var(--blue)" />
+        <KpiCard label="Turnover" value={fmt(m.turnover, 0)} color="var(--blue)" />
         <KpiCard label="Avg Trade Size" value={fmt(m.avg_trade_size)} color="var(--muted)" />
         <KpiCard label="Total Fees" value={fmt(m.total_fees)} color="var(--amber)" />
       </div>
